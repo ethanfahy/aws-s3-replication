@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Description: >
+  This CloudFormation template defines an S3 Bucket that is the destination of a
+  replication from another S3 Bucket defined in the source-bucket.yml
+  CloudFormation template contained in this project.
+Parameters:
+  DestinationS3BucketName:
+    Type: String
+    Description: >
+      The name of the S3 Bucket that is the destination of the same-region replication.
+  SourceAccountId:
+    Type: String
+    Description: AWS Account ID that contains the source S3 Bucket.
+  ProjectName:
+    Type: String
+    Description: >
+      This is the name of this project, to be used to help name Resources and apply
+      apply Project tags to taggable Resources.
+Resources: 
+  S3Bucket: 
+    Type: AWS::S3::Bucket
+    Description: >
+      This S3 Bucket is the destination of the same-region replication.
+    Properties:
+      BucketName: !Ref DestinationS3BucketName
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled # requirement for replication
+      Tags: 
+        - Key: Project 
+          Value: !Ref ProjectName 
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Description: >
+      This S3 bucket policy allows the destination S3 bucket to receive objects.
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Statement:
+        - Sid: Replication
+          Effect: Allow
+          Principal:
+            AWS: !Join ['', ['arn:aws:iam::', !Ref SourceAccountId, ':root']]
+          Action: 
+          - s3:GetBucketVersioning
+          - s3:PutBucketVersioning
+          - s3:ReplicateObject
+          - s3:ReplicateDelete
+          - s3:ObjectOwnerOverrideToBucketOwner
+          Resource: 
+          - !GetAtt S3Bucket.Arn
+          - !Join ['', [!GetAtt S3Bucket.Arn, '/*']]
+Outputs:
+  DestinationS3BucketArn:
+    Description: Destination S3 Bucket ARN
+    Value: !GetAtt S3Bucket.Arn
+    Export:
+      Name: DestinationS3BucketArn

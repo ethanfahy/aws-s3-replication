@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Description: >
+  This CloudFormation template defines an S3 Bucket that is the source of a
+  same-region replication to another S3 Bucket defined in the target-bucket.yml
+  CloudFormation template contained in this project.
+Parameters:
+  SourceS3BucketName:
+    Type: String
+    Description: >
+      The name of the S3 Bucket that is the source of the same-region replication.
+  DestinationAccountId:
+    Type: String
+    Description: The AWS Account ID that contains the destination S3 bucket.
+  DestinationS3BucketArn:
+    Type: String
+    Description: The Destination S3 Bucket ARN.
+  ProjectName:
+    Type: String
+    Description: >
+      This is the name of this project, to be used to help name Resources and apply
+      apply Project tags to taggable Resources.
+Resources: 
+  S3Bucket: 
+    Type: AWS::S3::Bucket 
+    Description: >
+      This S3 Bucket is the source of the same-region replication.
+    Properties: 
+      BucketName: !Ref SourceS3BucketName
+      VersioningConfiguration:
+        Status: Enabled # requirement for replication
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      ReplicationConfiguration:
+        Role: !GetAtt IAMRole.Arn
+        Rules:
+          - Destination: 
+              Account: !Ref DestinationAccountId
+              AccessControlTranslation:
+                Owner: Destination
+              Bucket: !Ref DestinationS3BucketArn
+            Prefix: '' # empty string here replicates all objects root-to-root
+            Status: Enabled
+      Tags: 
+        - Key: Project 
+          Value: !Ref ProjectName
+  IAMRole: 
+    Type: AWS::IAM::Role 
+    Description: >
+      This IAM Role allows S3 to replicate objects to the destination bucket.
+    Properties: 
+      RoleName: !Join ['-', [!Ref ProjectName, 'S3ReplicationRole']]
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17 
+        Statement: 
+        - Action: 'sts:AssumeRole'
+          Effect: Allow 
+          Principal: 
+            Service: 
+              - s3.amazonaws.com
+      Path: / 
+      Policies: 
+        - PolicyName: S3Replication 
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement: 
+              - Action: 
+                - s3:ListBucket
+                - s3:Get*
+                Effect: Allow
+                Resource:
+                - !Join ['', ['arn:aws:s3:::',!Ref SourceS3BucketName]]
+                - !Join ['', ['arn:aws:s3:::',!Ref SourceS3BucketName , '/*']]
+              - Action:
+                - s3:ReplicateObject
+                - s3:ReplicateDelete
+                - s3:ReplicateTags
+                - s3:GetObjectVersionTagging
+                - s3:ObjectOwnerOverrideToBucketOwner
+                Effect: Allow
+                Resource: 
+                - !Join ['', [!Ref DestinationS3BucketArn, '/*']]
